@@ -994,6 +994,7 @@ This value of `penalty` can then be used with `finalize_workflow()` to update/fi
 ```{r}
 ridge_final <- finalize_workflow(ridge_workflow, best_penalty)
 ridge_final_fit <- fit(ridge_final, data = train_data)
+ridge_final_fit
 ```
 
 
