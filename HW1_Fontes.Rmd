@@ -1,0 +1,492 @@
+---
+title: "HW 1"
+author: "Magela Fontes"
+date: "2024-05-29"
+output: html_document
+---
+
+## R Markdown
+
+
+```{r, echo = FALSE, include= FALSE, warning = FALSE, message = FALSE}
+
+#' <!-- #Loading libraries -->
+
+suppressPackageStartupMessages({
+    library(Hmisc) # Contains many functions useful for data analysis
+    library(checkmate) # Fast and Versatile Argument Checks
+    library(corrr) # Correlations in R
+    library(conflicted) # Makes it easier to handle same named functions that are in different packages
+    library(readxl) # reading in Excel files
+    library(dplyr) # data manipulation
+    library(tidyr) # Tidy Messy Data and pivot_longer and pivot_wider
+    library(ggplot2) # data visualization
+    library(knitr) # knitting data into HTML, Word, or PDF
+    library(evaluate) # Parsing and Evaluation Tools that Provide More Details than the Default
+    library(iopsych) # Methods for Industrial/Organizational Psychology
+    library(psych) # Procedures for Psychological, Psychometric, and Personality Research
+    library(quantreg) # Quantile Regression
+    library(lavaan) # confirmatory factor analysis (CFA) and structural equation modeling (SEM)
+    library(xtable) # Export Tables to LaTeX or HTML
+    library(reshape2) # transforming data between wide and long (tall)
+    library(GPArotation) # GPA Factor Rotation
+    library(Amelia) # A Program for Missing Data
+    # library(esquisse) # Explore and Visualize Your Data Interactively
+    library(expss) # Tables, Labels and Some Useful Functions from Spreadsheets and 'SPSS' Statistics
+    library(multilevel) # Multilevel Functions
+    library(janitor) # 	Simple Tools for Examining and Cleaning Dirty Data
+    library(mice) # Multivariate Imputation by Chained Equations
+    library(skimr) # Exploratory Data Analysis
+    library(lmtest) # A collection of tests, data sets, and examples for diagnostic checking in linear regression models
+    library(naniar) # helps with missing data
+    library(tidylog) # Creates a log to tell you what your tidyverse commands are doing to the data. NOTE: MAKE SURE TO ALWAYS LOAD LAST!!!
+  library(haven) #Use Haven to read .sav file. 
+})
+
+for (f in getNamespaceExports("tidylog")) {
+    conflicted::conflict_prefer(f, "tidylog", quiet = TRUE)
+}
+
+```
+
+```{r}
+#Use Haven to read .sav file 
+Data1 <- read_sav("SAQ.sav")
+```
+
+Glimpse the data.
+
+```{r}
+glimpse(Data1) #from `dplyr`
+```
+
+```{r}
+# Looking for missing data
+library(Amelia)
+missmap(Data1, y.at=c(1), y.labels=c(''), col=c('lightblue', 'black'))
+```
+
+```{r}
+percentmissing = function (x){ sum(is.na(x))/length(x) * 100}
+
+missing <- apply(Data1, 1, percentmissing) # we will use an apply function to loop it. 1 indicates rows and 2 indicates columns
+
+table(round(missing, 1))
+```
+
+
+```{r}
+library(naniar)
+Data1 %>%
+    gg_miss_var()
+```
+
+## Outlier detection
+
+
+```{r}
+nodemdata <- Data1 %>%
+    select(-c(FAC1_1,
+              FAC2_1,
+              FAC3_1, 
+              FAC4_1,
+              FAC1_2, 
+              FAC2_2,
+              FAC3_2,
+              FAC4_2))
+```
+
+```{r}
+cutoff = qchisq(1-.001, ncol(nodemdata))
+
+mahal = mahalanobis(nodemdata,
+                    colMeans(nodemdata),
+                    cov(nodemdata))
+
+
+cutoff ##cutoff score
+ncol(nodemdata) ##df
+summary(mahal < cutoff)
+```
+
+```{r}
+data_mahal <- Data1 %>%
+    bind_cols(mahal) %>%
+    rename(mahal = `...32`) # renaming the new column "mahal"
+```
+
+```{r}
+mahal_out <- data_mahal %>%
+    filter(mahal > cutoff) %>%
+    arrange(desc(mahal)) # sort mahal values from most to least
+```
+
+```{r}
+##exclude outliers
+noout <- nodemdata %>%
+    filter(mahal < cutoff)
+```
+
+
+
+```{r}
+##additivity
+correl = cor(noout, use = "pairwise.complete.obs")
+
+symnum(correl)
+
+correl
+```
+
+
+```{r}
+##assumption set up
+random = rchisq(nrow(noout), 7)
+fake = lm(random~., # Y is predicted by all variables in the data
+          data = noout) # You can use categorical variables now! Prediction should be somewhat random, errors should be random. 
+standardized = rstudent(fake) # Z-score all of the values to make it easier to interpret.
+fitted = scale(fake$fitted.values)
+```
+
+## Residuals
+```{r}
+
+##normality
+hist(standardized)
+```
+
+```{r}
+#load lmtest library
+library(lmtest)
+
+#perform Breusch-Pagan Test
+bptest(fake)
+
+## Is it normal to get a different result each time it's run? Is it picking a new random variable to test? 
+```
+
+The test statistic is 25.69 and the corresponding p-value is 0.32. Since
+the p-value is not less than 0.05, we fail to reject the null
+hypothesis. We do not have sufficient evidence to say that
+heteroscedasticity is present in the regression model.
+
+
+```{r}
+##linearity
+qqnorm(standardized)
+abline(0,1)
+
+```
+
+A lot close to zero and a few further away. Slightly curved between -2 and 2, points fairly close to the line. 
+
+```{r}
+plot(fake, 2)
+```
+
+
+```{r}
+
+##homogeneity
+plot(fitted,standardized)
+abline(0,0)
+abline(v = 0)
+```
+
+Good distribution
+
+```{r}
+##correlation adequacy Bartlett's test
+cortest.bartlett(correl, n = nrow(noout))
+```
+
+```{r}
+##sampling adequacy KMO test
+KMO(correl[,1:23])
+```
+
+The mean sampling adequacy (MSA) was .93, which is a good score since We want high values close to 1.
+
+
+```{r}
+#' Let's drop the missing data for now
+
+Data1 <- na.omit(Data1)
+
+#' Check for missing data again
+
+missmap(Data1, y.at=c(1), y.labels=c(''), col=c('yellow', 'black'))
+```
+
+```{r}
+Data1 <- noout
+```
+
+
+```{r}
+
+colnames(Data1)
+
+```
+
+#create ID Variable 
+
+```{r}
+
+Data1 <- Data1 %>% 
+    mutate(ID = row_number())
+
+Data1 <- Data1 %>%
+    dplyr::select(ID, everything())
+```
+
+```{r}
+training <- sample(Data1$ID, length(Data1$ID)*0.5)
+
+Data1_training <- subset(Data1, ID %in% training)
+Data1_test <- subset(Data1, !(ID %in% training))
+
+```
+
+Using 50/50 per Dr. Stilson's instructions. 
+
+
+## Histograms 
+
+```{r}
+hist(Data1_training$Question_01, breaks = 6)
+hist(Data1_training$Question_02, breaks = 6)
+hist(Data1_training$Question_03, breaks = 6)
+hist(Data1_training$Question_04, breaks = 6)
+hist(Data1_training$Question_05, breaks = 6)
+hist(Data1_training$Question_06, breaks = 6)
+hist(Data1_training$Question_07, breaks = 6)
+hist(Data1_training$Question_08, breaks = 6)
+hist(Data1_training$Question_09, breaks = 6)
+hist(Data1_training$Question_10, breaks = 6)
+hist(Data1_training$Question_11, breaks = 6)
+hist(Data1_training$Question_12, breaks = 6)
+hist(Data1_training$Question_13, breaks = 6)
+hist(Data1_training$Question_14, breaks = 6)
+hist(Data1_training$Question_15, breaks = 6)
+hist(Data1_training$Question_16, breaks = 6)
+hist(Data1_training$Question_17, breaks = 6)
+hist(Data1_training$Question_18, breaks = 6)
+hist(Data1_training$Question_19, breaks = 6)
+hist(Data1_training$Question_20, breaks = 6)
+hist(Data1_training$Question_21, breaks = 6)
+hist(Data1_training$Question_22, breaks = 6)
+hist(Data1_training$Question_23, breaks = 6)
+
+#code below doesn't work
+par(mfrow =c(5,5))
+```
+
+
+```{r}
+library(corrr)
+
+Cor_Mat <- Data1_training %>%
+    correlate() %>% 
+    shave() %>% # Remove upper triangle
+    fashion() # Print in nice format
+
+print(Cor_Mat)
+```
+
+```{r}
+#Flatten Correlation Matrix Function
+
+flattenCorrMatrix <- function(cormat, pmat, nmat) {
+    ut <- upper.tri(cormat)
+    data.frame(
+        row = rownames(cormat)[row(cormat)[ut]],
+        column = rownames(cormat)[col(cormat)[ut]],
+        cor  =(cormat)[ut],
+        p = pmat[ut],
+        n = nmat[ut]
+    )
+}
+
+```
+
+```{r}
+#install.packages("Hmisc", dependencies = TRUE)
+library(Hmisc)
+```
+
+```{r}
+#As a matrix
+Data1_training_MAT <- as.matrix(Data1_training)
+```
+
+```{r}
+library(Hmisc)
+#install.packages("checkmate", dependencies = TRUE)
+library(checkmate)
+res <- rcorr(Data1_training_MAT)
+print(res)
+```
+
+```{r}
+# New way
+
+library(corrr)
+
+Data1_Flat_Cor_Mat_stretch <- Data1_training %>%
+    select(-ID) %>% # remove ID variable since we don't need it
+    correlate() %>% # calculate correlations
+    stretch() %>% # make it tall
+    fashion() # round it
+
+Data1_Flat_Cor_Mat_stretch
+```
+
+```{r}
+#Not working
+#openxlsx::write.xlsx(Data_Flat_Cor_Mat_stretch, "00_HW1Data/Survey_Outcome_Corrs.xlsx")
+```
+
+```{r}
+library(psych)
+fa.parallel(Data1_training)
+```
+
+Parallel analysis suggests that the number of factors =  5  and the number of components =  4
+N-2 = 3 factors
+
+```{r}
+fa.parallel(Data1_training[c(2:24)])
+```
+
+```{r}
+fa_ml_3_trn <- fa(Data1_training[c(2:24)], nfactors = 3, fm="ml")
+
+print(fa_ml_3_trn)
+```
+
+```{r}
+print(fa_ml_3_trn$loadings, cutoff = .3)
+```
+
+Cross-loading 
+
+```{r}
+fa_ml_3_trn <- fa(Data1_training[c(2:24)], nfactors = 3, fm="ml", rotate="oblimin")
+
+print(fa_ml_3_trn)
+
+print(fa_ml_3_trn$loadings, cutoff = .3)
+```
+
+cross-loading 
+
+```{r}
+fa_ml_4_trn <- fa(Data1_training[c(2:24)], nfactors = 4, fm="ml", rotate="oblimin")
+
+print(fa_ml_4_trn)
+
+print(fa_ml_4_trn$loadings, cutoff = 0.3)
+```
+cross-loading 
+
+```{r}
+fa_ml_4faclds <- as.data.frame(unclass(fa_ml_4_trn$loadings))
+
+fa_ml_4faclds
+```
+
+```{r}
+fa_ml_5_trn <- fa(Data1_training[c(2:24)], nfactors = 5, fm="ml", rotate="oblimin") # make sure the [2:XX] reflects the correct columns after removing items
+
+print(fa_ml_5_trn)
+
+print(fa_ml_5_trn$loadings, cutoff = .3)
+```
+
+no cross-loadings 
+
+```{r}
+fa_ml_5_factor_loadings <- as.data.frame(round(unclass(fa_ml_5_trn$loadings), 3)) %>%
+    tibble::rownames_to_column("items")
+
+
+openxlsx::write.xlsx(fa_ml_5_factor_loadings, "C:/PSYC6841/HW1-fa_ml_5_factor_loadings.xlsx")
+```
+
+
+
+
+```{r}
+library(dplyr)
+#data1_items <- Data1_training %>%
+   # dplyr::select(-c(FAC1_1,
+             # FAC2_1,
+              #FAC3_1, 
+              #FAC4_1,
+              #FAC1_2, 
+              #FAC2_2,
+              #FAC3_2,
+              #FAC4_2,
+              #ID))
+```
+
+```{r}
+library(skimr)
+
+#skim(data1_items)
+```
+
+
+Question 3 needs to be reversed scored. 
+
+```{r}
+#data1_keys_list <- list(factor1 = c(1, 4, 5, 12, 16),
+                     # factor2 = c(6, 7, 13, 14, 18),
+                    #  factor3 = c(8, 11, 17), 
+                    # factor4 = c(2, -3, 9, 19, 22, 23),## q3 is reversed scored
+                    #  factor5 = c(20, 21) 
+                     # )
+
+#data1_keys <- make.keys(data1_items, data1_keys_list, item.labels = colnames(data1_items))
+```
+
+```{r}
+#scores <- scoreItems(data1_keys, data1_items, impute = "none", 
+                        # min = 1, max = 6, digits = 3)
+
+#head(scores$scores)
+
+#scores_df <- as.data.frame(scores$scores)
+```
+
+```{r}
+#' Now let's split out the data into factors for easier analysis
+#Emotion <- data1_items %>%
+  #  dplyr::select(c(1, 4, 5, 12, 16))
+
+#Experience <- data1_items %>%
+  #  dplyr::select(c(6, 7, 13, 14, 18))
+
+#Performance <- data1_items %>%
+  #  dplyr::select(c(8, 11, 17))
+
+#Perception <- data1_items %>%
+  #  dplyr::select(c(2, -3, 9, 19, 22, 23))
+
+#Response <- data1_items %>%
+  #  dplyr::select(c(20, 21))
+
+
+```
+
+
+```{r}
+
+#I was not able to get the scale code from class to run with my data. I can't figure out how I substitute my data in for the scale code. 
+
+#data1_keys_list <- list(factor1=c(1, 4, 5, 12, 16))
+
+#data1_keys <- make.keys(Emotion, data1_keys_list, item.labels = colnames(Emotion))
+```
+

@@ -1,0 +1,145 @@
+---
+title: "Class 2 HW - Student"
+output: html_notebook
+---
+
+# 1
+
+Create a `parsnip` specification for a linear regression model.
+
+# HW code
+```{r}
+lm_spechw <- linear_reg() %>%
+  set_mode("regression") %>%
+  set_engine("lm")
+```
+
+# 2
+
+Once we have the specification we can `fit` it by supplying a formula expression and the data we want to fit the model on.
+The formula is written on the form `y ~ x` where `y` is the name of the response and `x` is the name of the predictors.
+The names used in the formula should match the names of the variables in the data set passed to `data`. 
+
+Use `lm_spec` to fit the model of `medv` predicted by every predictor variable. Hint: you can use "." to specify every predictor.
+
+# HW code
+
+```{r}
+lm_fithw <- lm_spechw%>%
+  fit(medv ~ lstat, data = Boston)
+lm_fithw
+```
+The result of this fit is a parsnip model object. This object contains the underlying fit as well as some parsnip-specific information. If we want to look at the underlying fit object we can access it with `lm_fit$fit` or with
+
+# 3
+
+Get a summary of your model using `pluck` and `summary`
+
+The `lm` object has a nice `summary()` method that shows more information about the fit, including parameter estimates and lack-of-fit statistics.
+
+# HW code
+
+```{r}
+lm_fithw %>% 
+  pluck("fit") %>%
+  summary()
+```
+
+# 4
+
+Take a look at `lm_fit` with `tidy`
+
+# HW Code
+
+```{r}
+tidy(lm_fithw)
+```
+
+# 5
+
+Extract the model statistics using `glance`
+
+`glance()` can be used to extract the model statistics.
+
+#HW code
+```{r}
+glance(lm_fithw)
+```
+
+# 6
+
+Get the predicted `medv` values from your model using `predict`
+
+#HW code
+```{r}
+predict(lm_fithw, new_data= Boston)
+```
+
+
+# 7
+
+Bind the predicted columns to your existing data
+
+If you want to evaluate the performance of a model, you might want to compare the observed value and the predicted value for a data set. You can bind the columns together using `bind_cols` 
+
+#HW code
+
+```{r}
+bind_cols(
+  predict(lm_fithw, new_data = Boston),
+  Boston
+) %>%
+  select(medv, .pred)
+```
+
+# 8
+
+Now, make things easier by just using the `augment` function to do this.
+
+#HW code
+```{r}
+augment(lm_fithw, new_data = Boston)
+```
+
+
+# 9
+
+Focus specifically on the median value and the `.pred`, then you can select those two columns
+
+#HW code
+```{r}
+augment(lm_fithw, new_data = Boston) %>%
+  select(medv, .pred)
+```
+
+
+# 10
+
+Create a `recipe` with an interaction step between lstat and age
+
+#HW code
+```{r}
+rec_spechw <- recipe(medv ~ lstat + age, data = Boston) %>%
+  step_interact(~ lstat:age)
+```
+
+# 11
+
+Create a `workflow` and add your lm_spec model and your rec_spec recipe.
+
+#HW code
+```{r}
+lm_wfhw <- workflow() %>%  ##A workflow is a container object that aggregates information required to fit and predict from a model.
+  add_model(lm_spechw) %>%
+  add_recipe(rec_spechw)
+```
+
+# 12
+
+Fit your `workflow`.
+
+#HW code
+```{r}
+lm_wfhw %>% fit(Boston)
+```
+
